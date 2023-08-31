@@ -1,2 +1,12 @@
-# diffusion_models_distillation
-Papers and implementations of distillation for diffusion models
+# Diffusion Models Distillation
+Implementations of distillation for diffusion models
+
+
+## Requirements
+
+
+## Run
+
+
+## Reference
+
