@@ -728,8 +728,8 @@ def run_epoch(args, accelerator, unet, ema_unet, vae, th_unet, optimizer, lr_sch
                         ds_loss = calculate_loss(x_pred, th_pred, snr_weights, agg='mean')
                         th_loss = torch.tensor(0.0, device=accelerator.device, dtype=torch.float32)
                     else:
-                        th_loss = calculate_loss(th_pred, target, snr_weights, agg='mean')
                         ds_loss = F.mse_loss(model_pred, th_pred, reduce='mean')
+                        th_loss = calculate_loss(th_pred, target, snr_weights, agg='mean')
                     loss = ds_loss * args.distill_loss_weight + loss
                 else:
                     ds_loss = th_loss = torch.tensor(0.0, device=accelerator.device, dtype=torch.float32)
