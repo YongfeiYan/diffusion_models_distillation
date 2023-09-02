@@ -252,13 +252,6 @@ def parse_args():
         help='select N examples of dataset for training'
     )
     parser.add_argument(
-        "--max_train_samples", type=int, default=None,
-        help=(
-            "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
-        ),
-    )
-    parser.add_argument(
         "--validation_prompt_path", type=str, default=None, 
         help=("A set of prompts evaluated every `--validation_epochs` and logged to `--report_to`."),
     )
@@ -679,7 +672,7 @@ def run_epoch(args, accelerator, unet, ema_unet, vae, th_unet, optimizer, lr_sch
             dataset,
             shuffle=is_train,
             batch_size=args.train_batch_size,
-            num_workers=args.replay_num_workers,  # args.dataloader_num_workers,
+            num_workers=args.replay_num_workers, 
             pin_memory=True,
         )
         replay_dataloader = accelerator.prepare_data_loader(replay_dataloader)
@@ -699,7 +692,6 @@ def run_epoch(args, accelerator, unet, ema_unet, vae, th_unet, optimizer, lr_sch
                     target = st_scheduler.get_velocity(latents, noise, timesteps)
 
                 # Predict the noise residual and compute loss
-                # print(noisy_latents.shape, timesteps.shape, encoder_hidden_states.shape)
                 # convert to float32 to calucate loss, otherwise the loss may be too small when in fp16
                 model_pred = unet(noisy_latents, timesteps, cond).sample.float()
                 if args.run_mode == RunMode.STAGE_TWO:
@@ -1101,13 +1093,6 @@ def main():
     logger.info('column_names: {}'.format(column_names))
 
     with accelerator.main_process_first():
-        assert not args.max_train_samples
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # # Set the training transforms
-        # train_dataset = dataset["train"].with_transform(preprocess_train)
-        # train_dataset = dataset['train']
-    with accelerator.main_process_first():
         from diffdstl.data.replay import DebugDataset
         if args.use_debug_examples is not None:
             for mode in ['train', 'test']:
@@ -1120,7 +1105,7 @@ def main():
         collate_fn=None,
         batch_size=args.encoder_batch_size,
         num_workers=args.dataloader_num_workers,
-        pin_memory=True,
+        pin_memory=True
     )
     eval_dataloader = torch.utils.data.DataLoader(
         dataset['test'], 
@@ -1128,7 +1113,7 @@ def main():
         collate_fn=None,
         batch_size=args.encoder_batch_size,
         num_workers=args.dataloader_num_workers,
-        pin_memory=True,
+        pin_memory=True
     )
 
     # Scheduler and math around the number of training steps.
