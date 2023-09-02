@@ -60,10 +60,10 @@ check_min_version("0.18.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 
-class DistillMode:
+class RunMode:
     FINETUNE = 'finetune_v_prediction'
-    STAGE_TWO = 'stage_two'
-    STAGE_ONE = 'stage_one'
+    STAGE_TWO = 'stage_two'  # less sampling steps
+    STAGE_ONE = 'stage_one'  # classifier-free guidance removal
 
 
 def disabled_train(self, mode=True):
@@ -130,7 +130,7 @@ def run_validation(args, accelerator, vae, unet, ema_unet, th_unet, optimizer, l
         for i in range(len(args.validation_prompts)):
             with torch.autocast("cuda"), torch.no_grad():
                 logger.info('prompt {}: {}'.format(i, args.validation_prompts[i]))
-                guidance_scale = args.guidance_scale if args.distill_mode == DistillMode.FINETUNE else 1.0
+                guidance_scale = args.guidance_scale if args.run_mode == RunMode.FINETUNE else 1.0
                 cond = torch.full((1,), fill_value=int(args.validation_prompts[i]), dtype=torch.long, device=accelerator.device)
                 uncond = torch.full_like(cond, fill_value=int(args.uncond))
                 image = pipeline(cond.shape[0], cond=cond, uncond=uncond, num_inference_steps=args.student_steps, guidance_scale=guidance_scale, generator=generator).images[0]
@@ -203,7 +203,7 @@ def parse_args():
         help='Students'
     )
     parser.add_argument(
-        '--distill_mode', type=str, choices=[DistillMode.FINETUNE, DistillMode.STAGE_ONE, DistillMode.STAGE_ONE], default=DistillMode.FINETUNE,
+        '--run_mode', type=str, choices=[RunMode.FINETUNE, RunMode.STAGE_ONE, RunMode.STAGE_ONE], default=RunMode.FINETUNE,
     )
     parser.add_argument(
         '--origin_loss_weight', type=float, default=1.0,
@@ -574,7 +574,7 @@ def get_distillation_data(args, accelerator, vae, th_unet, unet, th_scheduler, s
         latents = vae.encode(batch['image'].permute(0, 3, 1, 2).contiguous())
         cond = batch['class_label']
         uncond = torch.full_like(cond, fill_value=int(args.uncond))
-        if args.distill_mode == DistillMode.FINETUNE:
+        if args.run_mode == RunMode.FINETUNE:
             cond = (mask * cond + (1 - mask) * uncond).to(dtype=cond.dtype)
         
         # Sample noise that we'll add to the latents
@@ -586,7 +586,7 @@ def get_distillation_data(args, accelerator, vae, th_unet, unet, th_scheduler, s
             )
 
         # Sample a random timestep for each image
-        if args.distill_mode == DistillMode.STAGE_TWO:
+        if args.run_mode == RunMode.STAGE_TWO:
             th_timesteps = th_scheduler.timesteps  # 2N
             st_timesteps = st_scheduler.timesteps  # N
             assert len(th_timesteps) == 2 * len(st_timesteps), (len(th_timesteps), len(st_timesteps))
@@ -601,13 +601,13 @@ def get_distillation_data(args, accelerator, vae, th_unet, unet, th_scheduler, s
         noisy_latents = st_scheduler.add_noise(latents, noise, timesteps)
 
         # Convert to float to calculate loss
-        if args.distill_mode == DistillMode.FINETUNE:
+        if args.run_mode == RunMode.FINETUNE:
             th_pred = th_scheduler.get_velocity(latents, noise, timesteps)
-        elif args.distill_mode == DistillMode.STAGE_ONE:
+        elif args.run_mode == RunMode.STAGE_ONE:
             cond_out = th_unet(noisy_latents, timesteps, cond).sample.float()
             uncond_out = th_unet(noisy_latents, timesteps, uncond).sample.float()
             th_pred = uncond_out + args.guidance_scale * (cond_out - uncond_out)
-        elif args.distill_mode == DistillMode.STAGE_TWO:
+        elif args.run_mode == RunMode.STAGE_TWO:
             """
             paper        -    code of DDIMScheduler
             alpha_t **2  -    alpha_prod_t, self.alphas_cumprod[timestep]
@@ -702,7 +702,7 @@ def run_epoch(args, accelerator, unet, ema_unet, vae, th_unet, optimizer, lr_sch
                 # print(noisy_latents.shape, timesteps.shape, encoder_hidden_states.shape)
                 # convert to float32 to calucate loss, otherwise the loss may be too small when in fp16
                 model_pred = unet(noisy_latents, timesteps, cond).sample.float()
-                if args.distill_mode == DistillMode.STAGE_TWO:
+                if args.run_mode == RunMode.STAGE_TWO:
                     alpha_prod_t, _ = st_scheduler.get_alpha_cumprods(timesteps, model_pred.shape)
                     x_pred = (alpha_prod_t ** 0.5) * noisy_latents - ((1 - alpha_prod_t) ** 0.5) * model_pred
                 target = target.float()
@@ -724,7 +724,7 @@ def run_epoch(args, accelerator, unet, ema_unet, vae, th_unet, optimizer, lr_sch
 
                 # Distillation loss
                 if args.distill_loss_weight > 0:
-                    if args.distill_mode == DistillMode.STAGE_TWO:
+                    if args.run_mode == RunMode.STAGE_TWO:
                         ds_loss = calculate_loss(x_pred, th_pred, snr_weights, agg='mean')
                         th_loss = torch.tensor(0.0, device=accelerator.device, dtype=torch.float32)
                     else:
@@ -760,7 +760,6 @@ def run_epoch(args, accelerator, unet, ema_unet, vae, th_unet, optimizer, lr_sch
                         m.add(v, train_n_samples)
                 
                 if is_train:
-                    # Backpropagate
                     accelerator.backward(loss)
                     if accelerator.sync_gradients:
                         accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
@@ -838,7 +837,7 @@ def run_epoch(args, accelerator, unet, ema_unet, vae, th_unet, optimizer, lr_sch
         logger.info('using folder replay')
         Writer, Reader = FolderReplayDatasetWriter, FolderReplayDatasetReader
     else:
-        raise RuntimeError('')
+        raise RuntimeError('Unknown replay writer')
     replay_writer = Writer(replay_data_dir, worker_id=accelerator.local_process_index, n_workers=accelerator.num_processes)
 
     def run_multi_replay():
@@ -958,12 +957,12 @@ def main():
     unet = UNetWrapper.from_pretrained(args.pretrained_model_name_or_path, subfolder='unet')
     assert unet.model is not th_unet.model, 'teacher and student use the same weights.'
     vae = EncoderDecoderWrapper.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    scheduler_cls = DDIMScheduler if args.distill_mode != DistillMode.STAGE_TWO else DistillDDIMScheduler
+    scheduler_cls = DDIMScheduler if args.run_mode != RunMode.STAGE_TWO else DistillDDIMScheduler
     th_scheduler = scheduler_cls.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     
     st_scheduler = scheduler_cls.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     st_scheduler.register_to_config(prediction_type='v_prediction')  #
-    if args.distill_mode == DistillMode.STAGE_TWO:
+    if args.run_mode == RunMode.STAGE_TWO:
         th_scheduler.set_timesteps(args.student_steps * 2, device=accelerator.device)
     st_scheduler.set_timesteps(args.student_steps, device=accelerator.device)
     assert st_scheduler.timesteps[0] == th_scheduler.timesteps[0]

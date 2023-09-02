@@ -6,6 +6,10 @@ Implementations of distillation for diffusion models
 
 
 ## Run
+Download imagenet via ldm code 
+finetune v_prediction
+stage_one 
+stage_two
 
 
 ## Reference
