@@ -601,13 +601,13 @@ def get_distillation_data(args, accelerator, vae, th_unet, unet, th_scheduler, s
         noisy_latents = st_scheduler.add_noise(latents, noise, timesteps)
 
         # Convert to float to calculate loss
-        if args.run_mode == RunMode.FINETUNE:
+        if args.run_mode == RunMode.FINETUNE:  # finetune model to v_prediction
             th_pred = th_scheduler.get_velocity(latents, noise, timesteps)
-        elif args.run_mode == RunMode.STAGE_ONE:
+        elif args.run_mode == RunMode.STAGE_ONE:  # remove classifier-free guidance
             cond_out = th_unet(noisy_latents, timesteps, cond).sample.float()
             uncond_out = th_unet(noisy_latents, timesteps, uncond).sample.float()
             th_pred = uncond_out + args.guidance_scale * (cond_out - uncond_out)
-        elif args.run_mode == RunMode.STAGE_TWO:
+        elif args.run_mode == RunMode.STAGE_TWO:  # halve sampling steps
             """
             paper        -    code of DDIMScheduler
             alpha_t **2  -    alpha_prod_t, self.alphas_cumprod[timestep]
