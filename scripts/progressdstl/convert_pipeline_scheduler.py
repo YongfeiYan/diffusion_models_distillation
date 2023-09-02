@@ -22,4 +22,9 @@ if __name__ == '__main__':
     print('pipeline', pipeline)
     pipeline.save_pretrained(args.save_dir)
     
-    print('finished')
+    print('finished, converted_pipeline:', args.save_dir)
+
+"""
+Run:
+PYTHONPATH=.:third_party/stable-diffusion/ python scripts/progressdstl/convert_pipeline_scheduler.py data/log/imagenet/stage_one/pipeline data/log/imagenet/stage_one/pipeline-converted
+"""

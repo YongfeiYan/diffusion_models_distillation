@@ -136,7 +136,7 @@ def run_validation(args, accelerator, vae, unet, ema_unet, th_unet, optimizer, l
                 image = pipeline(cond.shape[0], cond=cond, uncond=uncond, num_inference_steps=args.student_steps, guidance_scale=guidance_scale, generator=generator).images[0]
                 image.save(image_dir + '/{:03d}.png'.format(i))
             images.append(image)
-        grid = make_image_grid(images, len(images) // 4, 4)
+        grid = make_image_grid(images, len(images) // 10, 10)
         grid.save(os.path.abspath(image_dir) + '.grid.png')
 
         pipeline.save_pretrained(os.path.join(args.output_dir, args.pipeline_save_name))
@@ -199,11 +199,11 @@ def parse_args():
         help=' ',
     )
     parser.add_argument(
-        '--student_steps', type=int, required=True, 
+        '--student_steps', type=int, default=50, 
         help='Students'
     )
     parser.add_argument(
-        '--run_mode', type=str, choices=[RunMode.FINETUNE, RunMode.STAGE_ONE, RunMode.STAGE_ONE], default=RunMode.FINETUNE,
+        '--run_mode', type=str, choices=[RunMode.FINETUNE, RunMode.STAGE_ONE, RunMode.STAGE_TWO], default=RunMode.FINETUNE,
     )
     parser.add_argument(
         '--origin_loss_weight', type=float, default=1.0,
@@ -962,10 +962,10 @@ def main():
     
     st_scheduler = scheduler_cls.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     st_scheduler.register_to_config(prediction_type='v_prediction')  #
+    st_scheduler.set_timesteps(args.student_steps, device=accelerator.device)
     if args.run_mode == RunMode.STAGE_TWO:
         th_scheduler.set_timesteps(args.student_steps * 2, device=accelerator.device)
-    st_scheduler.set_timesteps(args.student_steps, device=accelerator.device)
-    assert st_scheduler.timesteps[0] == th_scheduler.timesteps[0]
+        assert st_scheduler.timesteps[0] == th_scheduler.timesteps[0]
     logger.info('th_scheduler {}'.format(th_scheduler))
     logger.info('th_scheduler.timesteps: {}'.format(th_scheduler.timesteps))
     logger.info('st_scheduler {}'.format(st_scheduler))

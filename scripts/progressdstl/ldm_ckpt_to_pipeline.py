@@ -44,5 +44,5 @@ print('finished, save pipeline to', pipeline_dir, '\nSave sampled images to', sa
 
 """
 Run:
-PYTHONPATH=.:third_party/stable-diffusion/ python scripts/progressdsl/ldm_ckpt_to_pipeline.py configs/imagenet/cin256-v2.yaml data/ldm/cin256-v2/model.ckpt data/test-pipeline
+PYTHONPATH=.:third_party/stable-diffusion/ python scripts/progressdstl/ldm_ckpt_to_pipeline.py configs/imagenet/cin256-v2.yaml data/ldm/cin256-v2/model.ckpt data/test-pipeline
 """

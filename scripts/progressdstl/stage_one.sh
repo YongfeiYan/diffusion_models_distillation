@@ -1,17 +1,17 @@
 
 root_dir=$(pwd)
 script=$root_dir/diffdstl/train/progressdstl.py
-log_dir=$root_dir/data/log/imagenet/finetune
-pretrained_model_name_or_path=$root_dir/data/test-pipeline
+log_dir=$root_dir/data/log/imagenet/stage_one
+pretrained_model_name_or_path=$root_dir/data/log/imagenet/finetune/pipeline
 
 cd $root_dir
 mkdir -p $log_dir
 rm -rf $log_dir/replay
 
-  # --use_debug_examples 100 \
+#   --use_debug_examples 100 \
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0} PYTHONPATH=.:third_party/stable-diffusion accelerate launch $script \
   --pretrained_model_name_or_path=$pretrained_model_name_or_path \
-  --pipeline_save_name pipeline --run_mode finetune_v_prediction --uncond 1000 --origin_loss_weight 1.0 --distill_loss_weight 0.0 \
+  --pipeline_save_name pipeline --run_mode stage_one --uncond 1000 --origin_loss_weight 0.0 --distill_loss_weight 1.0 \
   --dataset_name imagenet --replay-times 1 --replay-batches 250 \
   --loss_key eval_loss \
   --use_ema --ema_decay 0.995 \
